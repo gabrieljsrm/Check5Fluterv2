@@ -13,10 +13,8 @@ class ConversaoPage extends StatefulWidget {
 class _ConversaoPageState extends State<ConversaoPage> {
   final TextEditingController valorRealController = TextEditingController();
   double valorConvertido = 0.0;
-  String errorMessage = '';
   double taxaCambio = 0.0;
 
-  // Adicionando variáveis para os saldos
   double saldoReal = 0.0; 
   double saldoDolar = 0.0; 
 
@@ -30,24 +28,21 @@ class _ConversaoPageState extends State<ConversaoPage> {
         taxaCambio = double.parse(data['USDBRL']['bid']);
       });
     } else {
-      setState(() {
-        errorMessage = 'Falha ao obter a taxa de câmbio.';
-      });
+      print('Falha ao obter a taxa de câmbio.');
     }
   }
 
   Future<void> fetchSaldos() async {
     final response = await Supabase.instance.client.from('saldos').select().execute();
 
-    if (response.error == null) {
+    if (response.data != null && response.data!.isNotEmpty) {
       final data = response.data as List;
-      // Atualize o estado com os saldos obtidos
       setState(() {
         saldoReal = data[0]['saldo_real'].toDouble();
         saldoDolar = data[0]['saldo_dolar'].toDouble();
       });
     } else {
-      print('Erro ao buscar saldos: ${response.error!.message}');
+      print('Erro ao buscar saldos.');
     }
   }
 
@@ -58,11 +53,11 @@ class _ConversaoPageState extends State<ConversaoPage> {
         'saldo_dolar': saldoDolar, 
         'valor_dolar_usado': taxaCambio
       })
-      .eq('id', 1)  // assumindo que você está atualizando a entrada com id = 1
+      .eq('id', 1)
       .execute();
 
-    if (response.error != null) {
-      print('Erro ao atualizar saldos: ${response.error!.message}');
+    if (response.data == null) {
+      print('Erro ao atualizar saldos.');
     }
   }
 
@@ -95,7 +90,6 @@ class _ConversaoPageState extends State<ConversaoPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Adicionando os saldos na parte superior
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -116,7 +110,6 @@ class _ConversaoPageState extends State<ConversaoPage> {
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   labelText: 'Valor em Real',
-                  errorText: errorMessage.isEmpty ? null : errorMessage,
                   prefixIcon: const Icon(Icons.money, color: Colors.teal),
                   enabledBorder: const OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.teal),
@@ -134,19 +127,16 @@ class _ConversaoPageState extends State<ConversaoPage> {
                         double.tryParse(valorRealController.text);
 
                     if (valorReal == null || valorReal <= 0) {
-                      errorMessage = 'Por favor, insira um valor válido!';
+                      print('Por favor, insira um valor válido!');
                       valorConvertido = 0.0;
                       return;
                     }
 
-                    errorMessage = '';
                     valorConvertido = valorReal / taxaCambio;
-                    // Aqui você pode adicionar a lógica para atualizar os saldos
-                    // Por exemplo:
-                    saldoReal -= valorReal;  // subtrair o valor convertido do saldo em real
-                    saldoDolar += valorConvertido;  // adicionar o valor convertido ao saldo em dólar
+                    saldoReal -= valorReal;  
+                    saldoDolar += valorConvertido;  
 
-                    updateSaldos();  // atualizar os saldos no banco de dados
+                    updateSaldos();  
                   });
                 } : null,
                 style: ElevatedButton.styleFrom(
