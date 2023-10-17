@@ -12,6 +12,7 @@ class ConversaoPage extends StatefulWidget {
 
 class _ConversaoPageState extends State<ConversaoPage> {
   final TextEditingController valorRealController = TextEditingController();
+  final TextEditingController adicionarSaldoController = TextEditingController();
   double valorConvertido = 0.0;
   double taxaCambio = 0.0;
 
@@ -33,39 +34,54 @@ class _ConversaoPageState extends State<ConversaoPage> {
   }
 
   Future<void> fetchSaldos() async {
-    final response = await Supabase.instance.client.from('saldos').select().execute();
-
-    if (response.data != null && response.data!.isNotEmpty) {
-      final data = response.data as List;
-      setState(() {
-        saldoReal = data[0]['saldo_real'].toDouble();
-        saldoDolar = data[0]['saldo_dolar'].toDouble();
-      });
-    } else {
-      print('Erro ao buscar saldos.');
-    }
+    Supabase.instance.client.from('saldos').select().execute().then((response) {
+      if (response.data != null && response.data!.isNotEmpty) {
+        final data = response.data as List;
+        setState(() {
+          saldoReal = data[0]['saldo_real'].toDouble();
+          saldoDolar = data[0]['saldo_dolar'].toDouble();
+        });
+      } else {
+        print('Erro ao buscar saldos.');
+      }
+    }).catchError((error) {
+      print('Erro ao buscar saldos: $error');
+    });
   }
 
   Future<void> updateSaldos() async {
-    await Supabase.instance.client.from('saldos')
-      .update({
-        'saldo_real': saldoReal,
-        'saldo_dolar': saldoDolar,
-        'valor_dolar_usado': taxaCambio
-      })
-      .eq('id', 1)
-      .execute();
+    Supabase.instance.client.from('saldos')
+        .update({
+          'saldo_real': saldoReal,
+          'saldo_dolar': saldoDolar,
+          'valor_dolar_usado': taxaCambio,
+        })
+        .eq('id', 1)
+        .execute()
+        .then((response) {
+      if (response.data == null) {
+        print('Erro ao atualizar saldos.');
+      }
+    }).catchError((error) {
+      print('Erro ao atualizar saldos: $error');
+    });
   }
 
-  Future<void> adicionarHistorico(double valorReal, double valorDolar) async {
-    await Supabase.instance.client.from('historico_transacoes')
-      .insert({
-        'valor_real': valorReal,
-        'valor_dolar': valorDolar,
-        'taxa_cambio': taxaCambio,
-        'data_hora': DateTime.now().toIso8601String()
-      })
-      .execute();
+  Future<void> adicionarSaldo() async {
+    final double? valorAdicionado =
+        double.tryParse(adicionarSaldoController.text);
+
+    if (valorAdicionado != null && valorAdicionado > 0) {
+      setState(() {
+        saldoReal += valorAdicionado;
+      });
+
+      await updateSaldos();
+      fetchSaldos();
+      adicionarSaldoController.clear();
+    } else {
+      print('Por favor, insira um valor válido para adicionar ao saldo.');
+    }
   }
 
   @override
@@ -113,15 +129,36 @@ class _ConversaoPageState extends State<ConversaoPage> {
               const Divider(color: Colors.teal, thickness: 2),
               const SizedBox(height: 16.0),
               TextField(
-                controller: valorRealController,
+                controller: adicionarSaldoController,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Valor em Real',
-                  prefixIcon: const Icon(Icons.money, color: Colors.teal),
-                  enabledBorder: const OutlineInputBorder(
+                decoration: const InputDecoration(
+                  labelText: 'Adicionar Saldo em Real',
+                  prefixIcon: Icon(Icons.add, color: Colors.teal),
+                  enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.teal),
                   ),
-                  focusedBorder: const OutlineInputBorder(
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.teal),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16.0),
+              ElevatedButton(
+                onPressed: () => adicionarSaldo(),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                child: const Text('Adicionar Saldo'),
+              ),
+              const SizedBox(height: 16.0),
+              TextField(
+                controller: valorRealController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Valor em Real para Conversão',
+                  prefixIcon: Icon(Icons.money, color: Colors.teal),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.teal),
+                  ),
+                  focusedBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.teal),
                   ),
                 ),
@@ -144,7 +181,6 @@ class _ConversaoPageState extends State<ConversaoPage> {
                     saldoDolar += valorConvertido;
 
                     updateSaldos();
-                    adicionarHistorico(valorReal, valorConvertido);
                   });
                 } : null,
                 style: ElevatedButton.styleFrom(
