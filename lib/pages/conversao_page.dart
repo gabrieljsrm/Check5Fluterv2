@@ -34,42 +34,77 @@ class _ConversaoPageState extends State<ConversaoPage> {
   }
 
   Future<void> fetchSaldos() async {
-    Supabase.instance.client.from('saldos').select().execute().then((response) {
-      if (response.data != null && response.data!.isNotEmpty) {
-        final data = response.data as List;
-        setState(() {
-          saldoReal = data[0]['saldo_real'].toDouble();
-          saldoDolar = data[0]['saldo_dolar'].toDouble();
-        });
-      } else {
-        print('Erro ao buscar saldos.');
-      }
-    }).catchError((error) {
-      print('Erro ao buscar saldos: $error');
-    });
+    final response = await Supabase.instance.client.from('saldos').select().execute();
+
+    if (response.data != null && response.data!.isNotEmpty) {
+      final data = response.data as List;
+      setState(() {
+        saldoReal = data[0]['saldo_real'].toDouble();
+        saldoDolar = data[0]['saldo_dolar'].toDouble();
+      });
+    } else {
+      print('Erro ao buscar saldos.');
+    }
   }
 
   Future<void> updateSaldos() async {
-    Supabase.instance.client.from('saldos')
-        .update({
-          'saldo_real': saldoReal,
-          'saldo_dolar': saldoDolar,
-          'valor_dolar_usado': taxaCambio,
-        })
-        .eq('id', 1)
-        .execute()
-        .then((response) {
-      if (response.data == null) {
-        print('Erro ao atualizar saldos.');
+    final response = await Supabase.instance.client.from('saldos')
+      .update({
+        'saldo_real': saldoReal,
+        'saldo_dolar': saldoDolar,
+        'valor_dolar_usado': taxaCambio,
+      })
+      .eq('id', 1)
+      .execute();
+
+    if (response.data == null) {
+      print('Saldos atualizados com sucesso.');
+
+      // Agora, adicione um registro ao histórico de transações
+      final data = {
+        'valor_real': saldoReal,
+        'valor_dolar': saldoDolar,
+        'taxa_cambio': taxaCambio,
+        'data_hora': DateTime.now().toUtc().toIso8601String(),
+      };
+
+      final transactionResponse = await Supabase.instance.client.from('historico_transacoes')
+        .upsert([data]).execute();
+
+      if (transactionResponse.data == null) {
+        print('Registro de transação adicionado com sucesso.');
+      } else {
+        print('Erro ao adicionar registro de transação: ${transactionResponse.data?.message}');
       }
-    }).catchError((error) {
-      print('Erro ao atualizar saldos: $error');
-    });
+    } else {
+      print('Erro ao atualizar saldos: ${response.data?.message}');
+    }
   }
+
+  Future<void> adicionarHistorico(double valorReal, double valorDolar) async {
+  final dataHora = DateTime.now().toUtc().toIso8601String(); 
+
+  final response = await Supabase.instance.client.from('historico_transacoes')
+    .insert([
+      {
+        'valor_real': valorReal,
+        'valor_dolar': valorDolar,
+        'taxa_cambio': taxaCambio,
+        'data_hora': dataHora, 
+      }
+    ]);
+
+  if (response.error != null) {
+    print('Erro ao adicionar registro de transação: ${response.error!.message}');
+  } else {
+    print('Registro de transação adicionado com sucesso.');
+  }
+}
+
 
   Future<void> adicionarSaldo() async {
     final double? valorAdicionado =
-        double.tryParse(adicionarSaldoController.text);
+      double.tryParse(adicionarSaldoController.text);
 
     if (valorAdicionado != null && valorAdicionado > 0) {
       setState(() {
@@ -77,7 +112,7 @@ class _ConversaoPageState extends State<ConversaoPage> {
       });
 
       await updateSaldos();
-      fetchSaldos();
+      await fetchSaldos(); // Aguarda a atualização dos saldos antes de buscar novamente
       adicionarSaldoController.clear();
     } else {
       print('Por favor, insira um valor válido para adicionar ao saldo.');
@@ -100,9 +135,9 @@ class _ConversaoPageState extends State<ConversaoPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              fetchSaldos();
-              obterTaxaCambio();
+            onPressed: () async {
+              await fetchSaldos();
+              await obterTaxaCambio();
             },
           ),
         ],
@@ -168,7 +203,7 @@ class _ConversaoPageState extends State<ConversaoPage> {
                 onPressed: taxaCambio > 0 ? () {
                   setState(() {
                     final double? valorReal =
-                        double.tryParse(valorRealController.text);
+                      double.tryParse(valorRealController.text);
 
                     if (valorReal == null || valorReal <= 0) {
                       print('Por favor, insira um valor válido!');
@@ -181,6 +216,7 @@ class _ConversaoPageState extends State<ConversaoPage> {
                     saldoDolar += valorConvertido;
 
                     updateSaldos();
+                    adicionarHistorico(valorReal, valorConvertido);
                   });
                 } : null,
                 style: ElevatedButton.styleFrom(
@@ -195,11 +231,11 @@ class _ConversaoPageState extends State<ConversaoPage> {
               ),
               const SizedBox(height: 16.0),
               taxaCambio > 0
-                  ? Text(
-                      'Taxa de Câmbio Atual: R\$${taxaCambio.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 18, color: Colors.grey[700]),
-                    )
-                  : const CircularProgressIndicator(),
+                ? Text(
+                  'Taxa de Câmbio Atual: R\$${taxaCambio.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 18, color: Colors.grey[700]),
+                )
+                : const CircularProgressIndicator(),
             ],
           ),
         ),
