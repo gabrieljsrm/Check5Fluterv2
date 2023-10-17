@@ -15,8 +15,8 @@ class _ConversaoPageState extends State<ConversaoPage> {
   double valorConvertido = 0.0;
   double taxaCambio = 0.0;
 
-  double saldoReal = 0.0; 
-  double saldoDolar = 0.0; 
+  double saldoReal = 0.0;
+  double saldoDolar = 0.0;
 
   Future<void> obterTaxaCambio() async {
     const url = 'https://economia.awesomeapi.com.br/json/last/USD-BRL';
@@ -47,18 +47,25 @@ class _ConversaoPageState extends State<ConversaoPage> {
   }
 
   Future<void> updateSaldos() async {
-    final response = await Supabase.instance.client.from('saldos')
+    await Supabase.instance.client.from('saldos')
       .update({
-        'saldo_real': saldoReal, 
-        'saldo_dolar': saldoDolar, 
+        'saldo_real': saldoReal,
+        'saldo_dolar': saldoDolar,
         'valor_dolar_usado': taxaCambio
       })
       .eq('id', 1)
       .execute();
+  }
 
-    if (response.data == null) {
-      print('Erro ao atualizar saldos.');
-    }
+  Future<void> adicionarHistorico(double valorReal, double valorDolar) async {
+    await Supabase.instance.client.from('historico_transacoes')
+      .insert({
+        'valor_real': valorReal,
+        'valor_dolar': valorDolar,
+        'taxa_cambio': taxaCambio,
+        'data_hora': DateTime.now().toIso8601String()
+      })
+      .execute();
   }
 
   @override
@@ -133,10 +140,11 @@ class _ConversaoPageState extends State<ConversaoPage> {
                     }
 
                     valorConvertido = valorReal / taxaCambio;
-                    saldoReal -= valorReal;  
-                    saldoDolar += valorConvertido;  
+                    saldoReal -= valorReal;
+                    saldoDolar += valorConvertido;
 
-                    updateSaldos();  
+                    updateSaldos();
+                    adicionarHistorico(valorReal, valorConvertido);
                   });
                 } : null,
                 style: ElevatedButton.styleFrom(
